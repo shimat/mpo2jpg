@@ -1,12 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO; 
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Text;
 
 namespace Mpo2Jpg
 {
@@ -24,19 +19,19 @@ namespace Mpo2Jpg
         /// <summary>
         /// MPOファイルのバイト列
         /// </summary>
-        private byte[] _buffer;
+        private readonly byte[] buffer;
         /// <summary>
         /// APP2マーカのあるオフセット
         /// </summary>
-        private int[] _app2Offsets;
+        private int[] app2Offsets;
         /// <summary>
         /// SOI(JPEGの最初のマーカ)があるオフセット
         /// </summary>
-        private int[] _sois;
+        private int[] sois;
         /// <summary>
         /// 読み取ったMPヘッダ情報
         /// </summary>
-        private MPExtensions[] _mpExtensions;
+        private MPExtensions[] mpExtensions;
 
         /// <summary>
         /// MPヘッダ情報
@@ -45,7 +40,7 @@ namespace Mpo2Jpg
         {
             get
             {
-                return _mpExtensions;
+                return mpExtensions;
             }
         }
         #endregion
@@ -57,15 +52,15 @@ namespace Mpo2Jpg
         /// <param name="fileName"></param>
         public MpoDecoder(string fileName)
         {
-            _app2Offsets = null;
-            _sois = null;
-            _mpExtensions = null;
+            app2Offsets = null;
+            sois = null;
+            mpExtensions = null;
 
             // ファイルからバイト列として読み込む
-            _buffer = ReadFile(fileName);
+            buffer = ReadFile(fileName);
 
             // バイト列を解釈
-            Decode(_buffer); 
+            Decode(buffer); 
         }
 
         /// <summary>
@@ -91,18 +86,18 @@ namespace Mpo2Jpg
         /// <returns></returns>
         public MemoryStream[] GetJpegStreams()
         {
-            if (_app2Offsets == null || _app2Offsets.Length == 0 || _mpExtensions == null || _mpExtensions.Length == 0)
+            if (app2Offsets == null || app2Offsets.Length == 0 || mpExtensions == null || mpExtensions.Length == 0)
                 throw new InvalidOperationException();
 
-            MPEntryValue[] mpEntries = _mpExtensions[0].Index.MPEntryValues;
+            MPEntryValue[] mpEntries = mpExtensions[0].Index.MPEntryValues;
             MemoryStream[] streams = new MemoryStream[mpEntries.Length];
 
-            int offsetStart1 = _app2Offsets[0] + MarkerLength;
+            int offsetStart1 = app2Offsets[0] + MarkerLength;
             for (int i = 0; i < mpEntries.Length; i++)
             {
                 int size = (int)mpEntries[i].ImageSize;
                 int offset = (i == 0) ? 0 : (offsetStart1 + (int)mpEntries[i].ImageDataOffset);
-                streams[i] = new MemoryStream(_buffer, offset, size);
+                streams[i] = new MemoryStream(buffer, offset, size);
             }
 
             return streams;
@@ -130,14 +125,14 @@ namespace Mpo2Jpg
         /// <returns></returns>
         public MemoryStream[] GetJpegStreamsBF()
         {
-            int[] offsetList = GetJpegOffsets(_buffer);
+            int[] offsetList = GetJpegOffsets(buffer);
             List<MemoryStream> result = new List<MemoryStream>();
 
             for (int i = 0; i < offsetList.Length; i++)
             {
-                int nextOffset = (i < offsetList.Length - 1) ? offsetList[i + 1] : _buffer.Length;
+                int nextOffset = (i < offsetList.Length - 1) ? offsetList[i + 1] : buffer.Length;
                 int count = nextOffset - offsetList[i];
-                result.Add(new MemoryStream(_buffer, offsetList[i], count));
+                result.Add(new MemoryStream(buffer, offsetList[i], count));
             }
 
             return result.ToArray();
@@ -224,7 +219,7 @@ namespace Mpo2Jpg
             int o = FindApp2Offset(buffer, 0);
             if (o < 0)
                 throw new Exception("マルチピクチャフォーマットじゃないかも");
-            _app2Offsets = new int[1]{ o };
+            app2Offsets = new int[1]{ o };
 
             /*for (int i = o + 8; i < o + 28; i++)
             {
@@ -236,20 +231,26 @@ namespace Mpo2Jpg
             extList.Add(DecodeOne(buffer, o, true));
 
             // 各JPEGのSOIの取得
-            _sois = GetSOIOffsets(_app2Offsets[0], extList[0].Index.MPEntryValues);
-            if (_sois.Length == 0 || _sois[0] != 0)
+            sois = GetSOIOffsets(app2Offsets[0], extList[0].Index.MPEntryValues);
+            if (sois.Length == 0 || sois[0] != 0)
                 throw new Exception("SOI取得エラー");
             // APP2マーカーの位置の取得 (最初のは除く)
-            int[] app2Remaining = FindApp2Offsets(buffer, ArrayGetRange(_sois, 1, _sois.Length - 1));            
+            int[] app2Remaining = FindApp2Offsets(buffer, ArrayGetRange(sois, 1, sois.Length - 1));            
 
             // 2番目以降をデコード
             foreach (int item in app2Remaining)
             {
                 extList.Add(DecodeOne(buffer, item, false));
             }
-            _app2Offsets = _app2Offsets.Concat(app2Remaining).ToArray();
 
-            _mpExtensions = extList.ToArray();
+            // app2Offsetsにapp2Remainingを連結
+            {
+                List<int> app2OffsetsTemp = new List<int>(app2Offsets);
+                app2OffsetsTemp.AddRange(app2Remaining);
+                app2Offsets = app2OffsetsTemp.ToArray();
+            }
+
+            mpExtensions = extList.ToArray();
         }
         /// <summary>
         /// バイト列から個別画像1つに対するMPフォーマットを解釈する
@@ -351,7 +352,7 @@ namespace Mpo2Jpg
             if (index.Count > 3)
             {
                 index.ImageUIDList = new IFD(buffer, o + 38, offsetStart, endian);
-                index.TotalFrames = new IFD(_buffer, o + 50, offsetStart, endian);
+                index.TotalFrames = new IFD(this.buffer, o + 50, offsetStart, endian);
                 index.NextIFDOffset = BitConverterEx.ToUInt32(buffer, o + 62, endian);
             }
             else if(index.Count == 3)
@@ -468,7 +469,7 @@ namespace Mpo2Jpg
 			}
 
             // 普通は0
-            indAttr.NextIFDOffset = BitConverterEx.ToUInt32(_buffer, o + 2 + (12 * indAttr.Count), endian);
+            indAttr.NextIFDOffset = BitConverterEx.ToUInt32(this.buffer, o + 2 + (12 * indAttr.Count), endian);
 
             return indAttr;
         }

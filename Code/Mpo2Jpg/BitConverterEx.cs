@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -358,6 +357,7 @@ namespace Mpo2Jpg
             Array.Copy(src, startIndex, dst, 0, count);
             return dst;
         }
+
         /// <summary>
         /// エンディアンに従い適切なようにbyte[]を変換
         /// </summary>
@@ -366,11 +366,14 @@ namespace Mpo2Jpg
         /// <returns></returns>
         private static byte[] Reverse(byte[] bytes, Endian endian)
         {
-            if(BitConverter.IsLittleEndian ^ endian == Endian.Little)
-                return bytes.Reverse().ToArray();
-            else 
+            if (BitConverter.IsLittleEndian ^ endian == Endian.Little)
+            {
+                Array.Reverse(bytes);
                 return bytes;
+            }
+            return bytes;
         }
+
         #endregion
     }
 }
