@@ -19,4 +19,4 @@ Mpo2Jpg.exe [[target_mpo1] target_mpo2 ...]
 ```
 The program outputs JPEG files to the same directory as input MPO file(s).
 
-When no input arguments are specified, you can choose input file(s) by GUI interface (OpenFileDialog). 
+When no input arguments are specified, you can choose input file(s) by GUI (OpenFileDialog). 
